@@ -105,7 +105,7 @@ def parseString( data:str ):
             if char == ">":
                 if saved_str[0:3] != "!--":
                     newtag = parseTag( saved_str )
-                    if last_tag == "script" and not last_tag_is_closing and ( newtag['name'] != "script" or not newtag['isClosing'] ): #THIS IS SPARTA SCRIPT!
+                    if ( last_tag == "script" or last_tag == "style") and not last_tag_is_closing and ( newtag['name'] != last_tag or not newtag['isClosing'] ): #THIS IS SPARTA SCRIPT!
                         state = 2
                         saved_str_b = saved_str_b + saved_str + char
                         saved_str = ""
@@ -117,7 +117,7 @@ def parseString( data:str ):
 
                         saved_str = ""
                         saved_str_b = ""
-                        if last_tag == "script" and not newtag['isClosing']:
+                        if (last_tag == "script" or last_tag == "style") and not newtag['isClosing']:
                             state = 2
                         else:
                             state = 0
@@ -164,7 +164,6 @@ def buildTag( data, pos ):
                 if tkn[1]['isClosing'] and tkn[1]['name'] == out['name']:
                     return out, i+1
                 else:
-                    print( i )
                     tag, i = buildTag( data, i )
                     out['inner'].append( tag )
         return out, len(data)
