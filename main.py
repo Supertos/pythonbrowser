@@ -106,8 +106,8 @@ if __name__ == "__main__":
                         <p>Have a <b>nice</b> day! </p>
                     <body>
                 </html> """
-    res = parse.parseString(pr)
-    data = parse.treeBuild(res)
+    #res = parse.parseString(pr)
+    #data = parse.treeBuild(res)
 
 
 
@@ -124,8 +124,29 @@ TagToSize['h5'] = 11
 
 def renderTag( Tag, ParentData ):
     global TagToSize
+    import io
+    if 'inner' not in Tag :
+        if Tag['name'] == 'img':
+            print("Tried to load img!", Tag['params']['src'] )
+            url.startLoadURL( "/"+Tag['params']['src'] )
+            endtime = time.time() + 1
+            while time.time() < endtime:
+                pass
+            f = io.BytesIO(url.readURL())
+            img = pg.image.load( f )
+            w, h = img.get_size()
+            w = w*0.4
+            h = h*0.4
 
-    if 'inner' not in Tag or Tag['name'] == 'head': return pg.Surface( (0,0), flags=pg.SRCALPHA )
+            img = pg.transform.scale( img, (w,h))
+            surf = pg.Surface((w,h), flags=pg.SRCALPHA)
+            surf.blit( img, (0,0))
+            return surf
+        else:
+            return pg.Surface((0, 0), flags=pg.SRCALPHA)
+    elif Tag['name'] == 'head': return pg.Surface( (0,0), flags=pg.SRCALPHA )
+    elif Tag['name'] == 'script': return pg.Surface( (0,0), flags=pg.SRCALPHA )
+    elif Tag['name'] == 'style': return pg.Surface( (0,0), flags=pg.SRCALPHA )
     pg.font.init()
     Surfaces = []
 
@@ -138,6 +159,8 @@ def renderTag( Tag, ParentData ):
         MyFont = pg.font.SysFont('arial', MyParentData['TextSize'])
     else:
         MyFont = pg.font.SysFont('arial', 11)
+    w, h = 240, 0
+    cur_w = 0
     for el in Tag['inner']:
         if isinstance( el, str ):
             datas = el.split("\n")
@@ -157,16 +180,14 @@ def renderTag( Tag, ParentData ):
             else:
                 Surfaces.append( surf )
 
-    w, h = 0, 0
+
     x, y = 0, 0
     for el in Surfaces:
         h += el.get_height()+2
-        w = max( el.get_width(), w )
     MySurf = pg.Surface( ( w, h ), flags=pg.SRCALPHA )
     MySurf.fill( (255,255,255, 255) )
     for el in Surfaces:
 
-        print( w, h )
         MySurf.blit( el, (x, y) )
         y = y + el.get_height() + 2
         #x = x + el.get_width()
@@ -187,7 +208,7 @@ for el in Renders:
     TagSurf.blit( el, ( 0, y ) )
     y += el.get_height() + 2
 TagSurf.fill( (0,0,0,0))
-TagSurf.blit( Renders[1], ( 0, 0 ) )
+TagSurf.blit( Renders[0], ( 0, 0 ) )
 
 
 Scr = pg.display.set_mode( (240,320) )
@@ -239,7 +260,7 @@ while True:
     c_pos = (x, y)
     Scr.fill( (255,255,255, 0) )
     #if TagSurf:
-    Scr.blit( Renders[1], (0,virtual_y) )
+    Scr.blit( Renders[0], (0,virtual_y) )
     Scr.blit( cursor, c_pos, (12,0,12, 14) )
     Scr.blit( BottomBar, (0, 320-24 ) )
 
