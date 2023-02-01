@@ -18,18 +18,18 @@ textTags[ 'div' ] = { 'font-size': 11 }
 textTags[ 'p' ] = { 'font-size': 11 }
 
 
-
-
 class HTMLTag:
     def __init__(self):
         self.type = ''
         self.parameters = {}
         self.content = []
         self.render = {}
+        self.isClosing = False
 
     def add(self, content):
         self.content.append( content )
     def addMod(self, name, val):
+        if name == "": return
         self.parameters[ name ] = val
 
     def hasMod(self, name):
@@ -141,25 +141,215 @@ class HTMLTag:
         return mySurface
 
 
-tag = HTMLTag()
-tag.setType("p")
+single_tags = [
+        "area",
+        "base",
+        "br",
+        "col",
+        "command",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "keygen",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+        "!DOCTYPE"
+    ]
 
-tag.add("Have a ")
 
-innerTag = HTMLTag()
-innerTag.setType("b")
-innerTag.add("nice")
-tag.add(innerTag)
-
-tag.add(" day!")
+def isSingleTag( name ):
+    global single_tags
+    return name in single_tags
 
 
-disp = pg.display.set_mode( (240, 320))
-disp.fill((255,255,255))
-disp.blit( tag.textRender( tag.textSplitRender( tag.textPrepRender())), (0,0))
-pg.display.flip()
+def parseTag( data: str ) -> HTMLTag:
+    out = HTMLTag()
+    endpos = len( data )-1
+    #-------------------------------------------------#
+    # TAG Parsing states:
+    # 0 - Processing tagname
+    # 1 - Processing modifier name
+    # 2 - Awaiting = to appear
+    # 3 - Processing modifier value
+    # 4 - Processing modifier string
 
-while True:
-    pg.display.flip()
+    state = 0
+    string_endsymbol = ""
 
+    saved_parameter = ""
+    saved_name = ""
+    for pos in range( len( data ) ):
+        char = data[ pos ]
 
+        if state == 0:
+            if char == "/":
+                out.isClosing = True
+
+            elif char == ">" or char == " ":
+                out.setType( saved_name )
+                if isSingleTag( saved_name ): out.isClosing = True
+                saved_name, state = "", 1
+
+            elif pos == endpos:
+                out.setType(saved_name+char)
+                if isSingleTag( saved_name+char ): out.isClosing = True
+                saved_name, state = "", 1
+
+            elif char != "<":
+                saved_name += char
+
+        elif state == 1:
+            if char == ">" or char == "/":
+                out.addMod( saved_name, True )
+                saved_name, state = "", 1
+
+            elif pos == endpos:
+                out.addMod( saved_name, True )
+                saved_name, state = "", 1
+
+            elif char == "=":
+                state = 3
+
+            elif char == " ":
+                if saved_name != "":
+                    state = 2
+
+            else:
+                saved_name += char
+
+        elif state == 2:
+            if char == "=":
+                state = 3
+
+            elif char != " ":
+                out.addMod( saved_name, True )
+                saved_name, state = char, 1
+
+        elif state == 3:
+            if char == "'" or char == "\"":
+                string_endsymbol = char
+                state = 4
+
+            elif char == " " or char == ">" or char == "/":
+                if saved_parameter != "":
+                    out.addMod( saved_name, saved_parameter)
+                    saved_parameter, saved_name, state = "", "", 1
+
+            elif pos == endpos:
+                out.addMod( saved_name, saved_parameter+char)
+                saved_parameter, saved_name, state = "", "", 1
+            else:
+                saved_parameter += char
+
+        elif state == 4:
+            if char == string_endsymbol:
+                out.addMod( saved_name, saved_parameter )
+                saved_parameter, saved_name, state = "", "", 1
+            else:
+                saved_parameter += char
+
+    return out
+
+def isScriptTag( tag: HTMLTag ) -> bool:
+    return not tag.isClosing and ( tag.type == "script" or tag.type == "style" )
+
+def parseString( data: str ) -> list:
+
+    out = []
+    endpos = len( data )-1
+    #-------------------------------------------------#
+    # TAG Parsing states:
+    # 0 - Processing plain text
+    # 1 - Processing tag
+    # 2 - Processing something alien
+    state = 0
+
+    saved_string = ""
+    saved_code = ""
+    prev_isScriptTag = False
+    prev_tagtype = ""
+    prev_tagIsClosing = Truess
+    for pos in range( len( data ) ):
+        char = data[ pos ]
+
+        if state == 0:
+            if char == "<":
+                if not prev_tagIsClosing and saved_string != "": out.append( saved_string ) # Disallow out-of-tag text
+                saved_string, state = "<", 1
+
+            elif pos == endpos:
+                out.append( saved_string )
+            else:
+                saved_string += char
+        elif state == 1:
+            if char == ">":
+                saved_string += char
+                tag = parseTag(saved_string)
+                if prev_isScriptTag and tag.type != prev_tagtype: # This is not a closing tag for script tag!
+                    state = 2
+                    saved_code = saved_code + saved_string + char
+                    saved_string = ""
+                else:
+                    if saved_string[0:4] != "<!--":
+                        if prev_isScriptTag: out.append( saved_code )
+                        out.append( tag )
+                        prev_isScriptTag = isScriptTag( tag )
+                        prev_tagtype = tag.type
+                        prev_tagIsClosing = tag.isClosing
+                        saved_string, state = "", 0
+                        if prev_isScriptTag: state = 2
+                    else:
+                        saved_string, state = "", 0
+
+            elif char == "<":   # We can't start tag twice! Certainly a script!
+                saved_code = saved_code + saved_string
+                saved_string = "<"
+            else:
+                saved_string += char
+
+        elif state == 2:
+            if char == "<":
+                saved_string, state = "<", 1
+            elif pos == endpos:
+                saved_code += char
+                saved_string, state = "<", 1
+            else:
+                saved_code = saved_code + char
+
+    return out
+
+pr = """
+        <!-- This is a long commentary
+        That is required to test how commentaries in this shitty HTML implementation work
+        By the way i hate python -->
+
+        <!DOCTYPE html>
+                <html>
+                    <head>
+                        <title>Main page</title>
+                        <script lang='js'>
+                            let a = 1;
+                            for( var i = 1; i<=10; i++ );
+                            {
+                                a = a + i;
+                            }
+                        </script>
+                    </head>
+                    <body>
+                        <img href='gui/logo.png'> 
+                        <h1>Welcome to my little page!</h1>
+                        <h2>Home</h2>
+                        <p>Have a <b>nice</b> day! </p>
+                    </body>"""
+
+a = parseString( pr )
+for entr in a:
+    if isinstance( entr , str):
+        print( "String: ", entr )
+    else:
+        print("Tag: ", entr.type, entr.isClosing)

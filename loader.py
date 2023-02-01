@@ -44,9 +44,3 @@ def doQueue():
         else:
             loaded[ file ] = ( request.read(), request.status, request.reason)
             del queue[ pos ]
-startConnection("www.google.com")
-load()
-
-
-while True:
-    doQueue()
